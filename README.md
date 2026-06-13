@@ -3,13 +3,15 @@
 **▶ Play the live preview:** https://ancient-snow-367.higgsfield.gg/
 (the same build, intended home is **Yandex Games** — upload `dist/stack.zip`, see below)
 
-A tiny, instant-loading HTML5 browser game built for **Yandex Games**. Tap (anywhere) / click /
-`Space` / gamepad to drop each sliding block onto the tower; the overhang is sliced off, a flush drop
-is a **PERFECT** (gold flash + ascending chime + bonus). Miss and the run ends.
+A fast-loading **3D** HTML5 browser game built for **Yandex Games**. Tap (anywhere) / click /
+`Space` / gamepad to drop each sliding block onto the tower; the sliding axis alternates each layer
+(the classic isometric Stack), the overhang is sliced off, and a flush drop is a **PERFECT** (gold
+flash + ascending chime + bonus). Miss and the run ends.
 
-Designed for the Yandex audience: it loads in well under a second because **everything is procedural**
-— the art is drawn on a `<canvas>` and the sound is synthesized with the Web Audio API, so there are
-**no image or audio files to download**.
+Designed for the Yandex audience to load fast: the 3D is real WebGL (Three.js, **vendored locally** in
+`vendor/` — no CDN), there are **no image or audio files** (block colors are procedural, sound is
+synthesized with the Web Audio API), and the whole zip is ~280 KB over the wire (loads in well under a
+second). Falls back to a UI-only mode if a browser lacks WebGL, so it never crashes.
 
 ## Why players come back every day
 - **Daily Challenge** — today's date seeds one identical course for everyone; today's best is saved.
@@ -37,7 +39,9 @@ fallback. All strings live in `strings.js` — adding a language is a data chang
 index.html        game page (loads the Yandex SDK at runtime with a graceful fallback)
 logic.js          no-op rules module (only needed by the Higgsfield apps-engine deploy)
 strings.js        all player-visible text (ru/en)
-src/              game code (game.js sim+render, platform.js SDK adapter, audio, store, themes, …)
+src/              game code: game.js (pure 3D sim), scene3d.js (Three.js renderer), platform.js
+                  (SDK adapter), audio, store, themes, i18n, main.js (UI overlay + flow)
+vendor/           Three.js (vendored locally, no CDN)
 assets/           favicon.svg (the only static asset)
 design/           plan, frozen numbers, asset manifest, approved STYLE FORMULA
 tools/            headless tests + card-image renderer (NOT shipped in the game zip)
@@ -109,7 +113,8 @@ tools/            headless tests + card-image renderer (NOT shipped in the game 
 | §1.10.1/§1.10.3 responsive, no overlap/clipping | canvas resizes to viewport (DPR≤1.5); transient overlays gated to the live scene |
 | §1.7 / §1.18 no absolute Yandex-S3 URLs; no URL gating | all paths relative; SDK has a graceful fallback |
 | §1.9 progress saved immediately; survives refresh | saved on each change + flushed on `pagehide` |
-| §1.21 <100 MB; §1.22 index.html at root, ASCII names | ~48 KB; `index.html`/`logic.js` at the zip root |
+| §1.21 <100 MB; §1.22 index.html at root, ASCII names | ~1.3 MB unzipped (~280 KB zipped); `index.html`/`logic.js` at the zip root |
+| §1.6.1.7 no WebGL notification | WebGL via Three.js; silent UI-only fallback if absent (no popup) |
 | §1.23 no interactive AI | none |
 | §2.6 record saved | best / coins / streak persisted |
 | §2.10 / §2.14 localization + auto language | `ru` + `en`, chosen from `environment.i18n.lang` |

@@ -10,16 +10,15 @@ await page.waitForFunction(() => window.__app && window.__app.screen === 'title'
 await page.evaluate(() => {
   const a = window.__app, g = a.game;
   a.startRun(false);
-  for (let i = 0; i < 7; i++) { const p = g.tower.at(-1); g.active.x = p.x + (i % 3 ? 5 : 0); g.drop(); }
-  // force a miss to end
-  g.active.x = g.W - g.active.w; g.drop();
-  if (g.state !== 'over') { g.active.x = g.tower.at(-1).x + 300; g.drop(); }
+  for (let i = 0; i < 7; i++) { const p = g.tower.at(-1), ax = g.active.axis; g.active[ax] = p[ax] + (i % 3 ? 0.8 : 0); g.drop(); }
+  // force a total miss to end the run
+  { const ax = g.active.axis; g.active[ax] = g.tower.at(-1)[ax] + 100; g.drop(); }
 });
 await page.waitForTimeout(120);
 await page.screenshot({ path: 'tools/shot-gameover.png' });
 
 // Paused screen
-await page.evaluate(() => { window.__app.startRun(false); for (let i=0;i<3;i++){const g=window.__app.game,p=g.tower.at(-1);g.active.x=p.x;g.drop();} window.__app.pauseGame(); });
+await page.evaluate(() => { const g = window.__app.game; window.__app.startRun(false); for (let i=0;i<3;i++){const p=g.tower.at(-1),ax=g.active.axis;g.active[ax]=p[ax];g.drop();} window.__app.pauseGame(); });
 await page.waitForTimeout(100);
 await page.screenshot({ path: 'tools/shot-paused.png' });
 

@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p dist
 rm -f dist/stack.zip
-zip -rq dist/stack.zip index.html logic.js strings.js src assets \
+zip -rq dist/stack.zip index.html logic.js strings.js src assets vendor \
   -x '*.DS_Store' '*/.*'
 echo "built dist/stack.zip"
 unzip -l dist/stack.zip

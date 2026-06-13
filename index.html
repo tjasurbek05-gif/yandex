@@ -12,13 +12,18 @@
     -webkit-tap-highlight-color: transparent; }
   /* lock the page so there is no browser scroll or swipe-to-refresh (§1.10.2) */
   body { position: fixed; inset: 0; touch-action: none; }
-  /* one-input game: never let the browser hijack touch/gestures */
-  #c { display: block; touch-action: none; }
+  /* layered fullscreen: gradient sky -> WebGL tower -> transparent 2D UI (captures input) */
+  #bg, #gl, #ui { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #bg { z-index: 0; background: #10131f; }
+  #gl { z-index: 1; pointer-events: none; }
+  #ui { z-index: 2; touch-action: none; }
   * { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<div id="bg"></div>
+<canvas id="gl"></canvas>
+<canvas id="ui"></canvas>
 <!-- Single-build approach: the Yandex SDK is loaded at runtime by ./src/platform.js with a
      graceful fallback, so this exact page runs on Yandex Games AND as a standalone link. -->
 <script type="module" src="./src/main.js"></script>

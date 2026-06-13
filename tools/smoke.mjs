@@ -26,13 +26,18 @@ log.push('title screen reached: ' + (await screen()));
 await press();
 log.push('after first Space -> ' + (await screen()));
 
-// A single pointer tap must drop exactly once (no pointer+touch double-fire).
+// A single pointer tap must drop exactly once. Align the block over the base first (so the drop
+// counts); a double-fire would drop again on the freshly-spawned edge block -> miss -> game over,
+// so "delta 1 AND still playing AND a perfect" proves exactly one drop fired.
+await page.evaluate(() => { const g = window.__app.game, a = g.active; a[a.axis] = g.tower.at(-1)[a.axis]; });
 const before = await score();
 await page.mouse.click(195, 500); // center-ish, clear of HUD buttons
 await page.waitForTimeout(80);
 const after = await score();
-log.push(`single tap drop delta = ${after - before} (expect 1)`);
-if (after - before !== 1) { console.log('FAIL: tap double-fired'); process.exitCode = 1; }
+const st = await screen();
+const combo = await page.evaluate(() => window.__app.game.perfectCombo);
+log.push(`single tap: delta=${after - before}, screen=${st}, combo=${combo} (expect 1, playing, 1)`);
+if (after - before !== 1 || st !== 'playing' || combo !== 1) { console.log('FAIL: tap not exactly one drop'); process.exitCode = 1; }
 
 // Drop ~40 times; the moving block will eventually miss and end the run.
 let ended = false;
@@ -61,16 +66,20 @@ await page.screenshot({ path: 'tools/shot-title.png' });
 await press(); // start run
 const towerH = await page.evaluate(() => {
   const a = window.__app, g = a.game;
-  for (let i = 0; i < 9 && g.state === 'playing'; i++) {
-    const prev = g.tower[g.tower.length - 1];
-    g.active.x = prev.x + (i % 2 === 0 ? 0 : 7); // mostly perfect, a couple slight offsets
+  for (let i = 0; i < 11 && g.state === 'playing'; i++) {
+    const p = g.tower.at(-1), ax = g.active.axis;       // align on the active sliding axis
+    g.active[ax] = p[ax] + (i % 4 === 3 ? 1.2 : 0);      // mostly perfect, occasional sliver
     g.drop();
   }
   return g.tower.length;
 });
-await page.waitForTimeout(120);
+const hasGL = await page.evaluate(() => {
+  try { const c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('webgl2')); }
+  catch (_) { return false; }
+});
+await page.waitForTimeout(140);
 await page.screenshot({ path: 'tools/shot-play.png' });
-log.push('mid-play screen: ' + (await screen()) + ', tower height ' + towerH);
+log.push('mid-play screen: ' + (await screen()) + ', tower height ' + towerH + ', webgl ' + hasGL);
 
 await browser.close();
 

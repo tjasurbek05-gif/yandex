@@ -1,91 +1,81 @@
-// STACK core — deterministic simulation + rendering. Logic is split from draw; all randomness comes
-// from a seeded RNG. The game emits results through callbacks; the host (main.js) owns coins, best,
-// leaderboard and UI. Audio + particles are handled here so feedback is frame-tight.
+// STACK core — deterministic 3D simulation (pure logic, NO WebGL/DOM, so it runs headlessly).
+// The tower is a stack of boxes; each new block slides along an axis that alternates X / Z (the
+// classic 3D Stack). Rendering lives in scene3d.js, which reads this state. Audio is here so
+// feedback is frame-tight.
 import { mulberry32 } from './rng.js';
 import { audio } from './audio.js';
-import { themeById, GOLD } from './themes.js';
 
-// --- frozen metrics (see design/thresholds.md) ---
-const BLOCK_H = 26;
-const BASE_W_FRAC = 0.62;
-const BASE_W_MAX = 240;
-const MIN_W_GAMEOVER = 1;
-const SPEED_START = 150;
-const SPEED_STEP = 6;
-const SPEED_MAX = 560;
-const PERFECT_EPS = 4;
-const PERFECT_REGROW = 6;
-const ACTIVE_SCREEN_FRAC = 0.42; // active block's TOP sits this far down the screen
-const CAMERA_LERP = 0.12;
-const POOL = 64;
+// --- frozen metrics (world units; BLOCK_H = 1) ---
+const BLOCK_H = 1;
+const BASE = 8;          // base block size on X and Z
+const RANGE = 9;         // how far the active block travels from centre (can fully miss)
+const MIN_OVERLAP = 0.05;
+const SPEED_START = 4.0;  // units/s
+const SPEED_STEP = 0.18;  // per stacked block
+const SPEED_MAX = 14.0;
+const EPS = 0.2;          // |offset| within this = perfect
+const REGROW = 0.4;       // size returned on a perfect (capped at BASE)
+const CAM_LERP = 0.1;
+const GRAVITY = 22;       // units/s^2 for falling slices
+const POOL = 48;
 
-function makeSlice() { return { live: false, x: 0, y: 0, w: 0, h: 0, vx: 0, vy: 0, vr: 0, rot: 0, color: '#fff' }; }
-function makeParticle() { return { live: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 0 }; }
+const makeSlice = () => ({
+  live: false, gold: false, colorIndex: 0,
+  x: 0, y: 0, z: 0, sx: 1, sy: 1, sz: 1,
+  vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, rvx: 0, rvy: 0, rvz: 0,
+});
 
 export class Game {
   constructor(events = {}) {
-    this.events = events;       // { onStack({perfect,combo,coins}), onGameOver(score,isDaily) }
+    this.events = events;          // { onStack({perfect,combo,coins}), onGameOver(score,isDaily) }
     this.W = 360; this.H = 640;
-    this.themeId = 'spectrum';
+    this.gen = 0;                  // bumped on reset so the renderer can detect a fresh tower
     this.slices = Array.from({ length: POOL }, makeSlice);
-    this.particles = Array.from({ length: POOL * 2 }, makeParticle);
     this.reset(1, false);
   }
 
   setSize(w, h) {
     this.W = w; this.H = h;
-    // Keep the interactive block fully visible + reachable after a resize / orientation change.
-    if (this.active) {
-      this.active.w = Math.min(this.active.w, w);
-      this.active.x = Math.max(0, Math.min(w - this.active.w, this.active.x));
+    if (this.active) {             // keep the moving block on its rail after a resize
+      this.active.x = Math.max(-RANGE, Math.min(RANGE, this.active.x));
+      this.active.z = Math.max(-RANGE, Math.min(RANGE, this.active.z));
     }
   }
-  setTheme(id) { this.themeId = id; }
 
-  baseW() { return Math.min(BASE_W_MAX, this.W * BASE_W_FRAC); }
+  setTheme(id) { this.themeId = id; } // colors are resolved by the renderer from this id
 
   reset(seed, isDaily) {
     this.rng = mulberry32(seed >>> 0);
     this.isDaily = !!isDaily;
+    this.gen++;
     this.state = 'playing';
     this.score = 0;
     this.perfectCombo = 0;
     this.bestCombo = 0;
     this.revived = false;
-    this.flash = 0;            // white perfect-flash alpha
-    this.perfectTextT = 0;     // floating "PERFECT" timer
-    const bw = this.baseW();
-    const cx = (this.W - bw) / 2;
-    this.tower = [{ x: cx, w: bw, colorIndex: 0 }];
+    this.flash = 0;
+    this.perfectTextT = 0;
+    this.tower = [{ x: 0, z: 0, sx: BASE, sz: BASE, colorIndex: 0 }];
     this.slices.forEach((s) => (s.live = false));
-    this.particles.forEach((p) => (p.live = false));
-    this._spawnActive(bw, 1);
-    // Camera starts already framed on the active block.
-    this.viewY = this._targetViewY();
+    this._spawnActive();
+    this.camTargetY = this._activeCenterY();
   }
 
-  _spawnActive(width, colorIndex) {
-    const startLeft = this.rng() < 0.5;
+  _activeCenterY() { return (this.tower.length + 0.5) * BLOCK_H; }
+
+  _spawnActive() {
+    const layer = this.tower.length;
+    const prev = this.tower[layer - 1];
+    const axis = layer % 2 === 1 ? 'x' : 'z';       // alternate the sliding axis each layer
+    const side = this.rng() < 0.5 ? -1 : 1;
     this.active = {
-      x: startLeft ? 0 : this.W - width,
-      w: width,
-      dir: startLeft ? 1 : -1,
-      speed: Math.min(SPEED_MAX, SPEED_START + this.score * SPEED_STEP),
-      colorIndex,
+      axis, x: prev.x, z: prev.z, sx: prev.sx, sz: prev.sz,
+      dir: -side, speed: Math.min(SPEED_MAX, SPEED_START + this.score * SPEED_STEP),
+      colorIndex: prev.colorIndex + 1, layer,
     };
+    if (axis === 'x') this.active.x = side * RANGE; else this.active.z = side * RANGE;
     this.canDrop = true;
   }
-
-  // Global-Y of the TOP edge of the block currently being placed (it rests one BLOCK_H above the
-  // current tower top). Blocks occupy global Y [i*BLOCK_H, (i+1)*BLOCK_H]; we draw by the top edge.
-  _activeTopGlobalY() { return (this.tower.length + 1) * BLOCK_H; }
-
-  _targetViewY() {
-    // Frame the active block: its top edge lands ACTIVE_SCREEN_FRAC down the screen.
-    return this._activeTopGlobalY() - this.H * (1 - ACTIVE_SCREEN_FRAC);
-  }
-
-  worldToScreenY(globalY) { return this.H - (globalY - this.viewY); }
 
   // The single player action.
   drop() {
@@ -93,108 +83,106 @@ export class Game {
     this.canDrop = false;
     const a = this.active;
     const prev = this.tower[this.tower.length - 1];
-    const overlapLeft = Math.max(a.x, prev.x);
-    const overlapRight = Math.min(a.x + a.w, prev.x + prev.w);
-    const overlap = overlapRight - overlapLeft;
-    const dropY = this._activeTopGlobalY();
+    const axis = a.axis;                      // 'x' or 'z'
+    const ac = a[axis], pc = prev[axis];      // centres on the sliding axis
+    const as = axis === 'x' ? a.sx : a.sz;    // active size on the sliding axis
+    const ps = axis === 'x' ? prev.sx : prev.sz;
+    const overlapLo = Math.max(ac - as / 2, pc - ps / 2);
+    const overlapHi = Math.min(ac + as / 2, pc + ps / 2);
+    const overlap = overlapHi - overlapLo;
+    const yTop = this._activeCenterY();
 
-    if (overlap <= MIN_W_GAMEOVER) {
-      // Whole block missed — it tumbles off and the run ends.
-      this._spawnSlice(a.x, dropY, a.w, a.colorIndex, a.x + a.w / 2 < prev.x + prev.w / 2 ? -1 : 1);
+    if (overlap <= MIN_OVERLAP) {             // total miss — the block tumbles off, run ends
+      this._spawnSlice(a.x, yTop, a.z, a.sx, BLOCK_H, a.sz, a.colorIndex, false,
+        axis === 'x' ? Math.sign(ac - pc) * 5 : 0, 1, axis === 'z' ? Math.sign(ac - pc) * 5 : 0);
       audio.over();
       this._gameOver();
       return;
     }
 
-    const dx = a.x - prev.x;
-    let newX, newW;
-    if (Math.abs(dx) <= PERFECT_EPS) {
-      // PERFECT — snap, regrow a little (never above base), reward + ascending chime.
-      newW = Math.min(prev.w + PERFECT_REGROW, this.baseW());
-      newX = prev.x - (newW - prev.w) / 2;
-      newX = Math.max(0, Math.min(this.W - newW, newX));
+    const delta = ac - pc;
+    let newC, newS;
+    if (Math.abs(delta) <= EPS) {             // PERFECT — snap, regrow a touch, reward
+      newC = pc;
+      newS = Math.min(Math.max(as, ps) + REGROW, BASE);
       this.perfectCombo++;
       this.bestCombo = Math.max(this.bestCombo, this.perfectCombo);
-      this.flash = 1;
-      this.perfectTextT = 0.8;
-      this._burst(prev.x + prev.w / 2, dropY);
+      this.flash = 1; this.perfectTextT = 0.8;
+      this._burst(axis === 'x' ? pc : a.x, yTop, axis === 'z' ? pc : a.z);
       audio.perfect(this.perfectCombo);
-    } else {
-      // Imperfect — keep the overlap, slice the overhang off to fall.
-      newX = overlapLeft;
-      newW = overlap;
-      if (a.x < prev.x) this._spawnSlice(a.x, dropY, overlapLeft - a.x, a.colorIndex, -1);
-      else this._spawnSlice(overlapRight, dropY, a.x + a.w - overlapRight, a.colorIndex, 1);
+    } else {                                  // imperfect — keep overlap, slice the overhang off
+      newC = (overlapLo + overlapHi) / 2;
+      newS = overlap;
+      const overhang = as - overlap;
+      const sideSign = Math.sign(delta);
+      const ohCenter = sideSign > 0 ? overlapHi + overhang / 2 : overlapLo - overhang / 2;
+      if (axis === 'x') {
+        this._spawnSlice(ohCenter, yTop, a.z, overhang, BLOCK_H, a.sz, a.colorIndex, false,
+          sideSign * (2 + this.rng() * 2), 2 + this.rng() * 2, 0);
+      } else {
+        this._spawnSlice(a.x, yTop, ohCenter, a.sx, BLOCK_H, overhang, a.colorIndex, false,
+          0, 2 + this.rng() * 2, sideSign * (2 + this.rng() * 2));
+      }
       this.perfectCombo = 0;
-      audio.slice();
-      audio.drop();
+      audio.slice(); audio.drop();
     }
 
-    this.tower.push({ x: newX, w: newW, colorIndex: a.colorIndex });
+    // place the block (write back the new centre + size on the sliding axis)
+    const placed = { x: a.x, z: a.z, sx: a.sx, sz: a.sz, colorIndex: a.colorIndex };
+    if (axis === 'x') { placed.x = newC; placed.sx = newS; }
+    else { placed.z = newC; placed.sz = newS; }
+    this.tower.push(placed);
     this.score++;
     const coins = 1 + (this.perfectCombo > 0 ? 2 * Math.min(this.perfectCombo, 5) : 0);
     this.events.onStack?.({ perfect: this.perfectCombo > 0, combo: this.perfectCombo, coins });
 
-    if (newW <= MIN_W_GAMEOVER) { audio.over(); this._gameOver(); return; }
-    this._spawnActive(newW, a.colorIndex + 1);
+    if (newS <= MIN_OVERLAP) { audio.over(); this._gameOver(); return; }
+    this._spawnActive();
   }
 
-  _gameOver() {
-    this.state = 'over';
-    this.events.onGameOver?.(this.score, this.isDaily);
-  }
+  _gameOver() { this.state = 'over'; this.events.onGameOver?.(this.score, this.isDaily); }
 
   // Rewarded-ad revive: widen the top block and resume at the same height (once per run).
   revive() {
     if (this.state !== 'over' || this.revived) return false;
     this.revived = true;
     const top = this.tower[this.tower.length - 1];
-    const w = Math.max(top.w, this.baseW() * 0.5);
-    top.x = Math.max(0, Math.min(this.W - w, top.x - (w - top.w) / 2));
-    top.w = w;
+    top.sx = Math.max(top.sx, BASE * 0.55);
+    top.sz = Math.max(top.sz, BASE * 0.55);
     this.perfectCombo = 0;
     this.state = 'playing';
-    this._spawnActive(w, top.colorIndex + 1);
+    this._spawnActive();
     return true;
   }
 
-  _spawnSlice(x, globalY, w, colorIndex, dir) {
-    if (w <= 0) return;
+  _spawnSlice(x, y, z, sx, sy, sz, colorIndex, gold, vx, vy, vz) {
+    if (sx <= 0 || sz <= 0) return;
     const s = this.slices.find((p) => !p.live) || this.slices[0];
-    s.live = true;
-    s.x = x; s.y = globalY; s.w = w; s.h = BLOCK_H;
-    s.vx = dir * (60 + this.rng() * 60);
-    s.vy = 40 + this.rng() * 40;
-    s.vr = dir * (1.5 + this.rng() * 2);
-    s.rot = 0;
-    s.color = themeById(this.themeId).block(colorIndex);
+    s.live = true; s.gold = gold; s.colorIndex = colorIndex;
+    s.x = x; s.y = y; s.z = z; s.sx = sx; s.sy = sy; s.sz = sz;
+    s.vx = vx; s.vy = vy; s.vz = vz;
+    s.rx = 0; s.ry = 0; s.rz = 0;
+    s.rvx = (this.rng() - 0.5) * 5; s.rvy = (this.rng() - 0.5) * 5; s.rvz = (this.rng() - 0.5) * 5;
   }
 
-  _burst(globalX, globalY) {
-    let n = 14;
-    for (const p of this.particles) {
-      if (n <= 0) break;
-      if (p.live) continue;
-      p.live = true;
-      const ang = this.rng() * Math.PI * 2;
-      const spd = 80 + this.rng() * 160;
-      p.x = globalX; p.y = globalY;
-      p.vx = Math.cos(ang) * spd;
-      p.vy = Math.sin(ang) * spd - 40;
-      p.max = p.life = 0.5 + this.rng() * 0.3;
-      n--;
+  _burst(x, y, z) {
+    for (let i = 0; i < 8; i++) {
+      const ang = this.rng() * Math.PI * 2, sp = 3 + this.rng() * 4;
+      this._spawnSlice(x, y, z, 0.28, 0.28, 0.28, -1, true,
+        Math.cos(ang) * sp, 3 + this.rng() * 4, Math.sin(ang) * sp);
     }
   }
 
   update(dt) {
-    // Camera always eases toward its framing target (also when game over, so the tower settles).
-    this.viewY += (this._targetViewY() - this.viewY) * CAMERA_LERP;
+    // camera eases toward the active block's height (also after game over, so the tower settles)
+    this.camTargetY += (this._activeCenterY() - this.camTargetY) * CAM_LERP;
 
     if (this.state === 'playing') {
       const a = this.active;
-      a.x += a.dir * a.speed * dt;
-      if (a.x <= 0) { a.x = 0; a.dir = 1; }
-      else if (a.x >= this.W - a.w) { a.x = this.W - a.w; a.dir = -1; }
+      const c = a.axis === 'x' ? 'x' : 'z';
+      a[c] += a.dir * a.speed * dt;
+      if (a[c] <= -RANGE) { a[c] = -RANGE; a.dir = 1; }
+      else if (a[c] >= RANGE) { a[c] = RANGE; a.dir = -1; }
     }
 
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3);
@@ -202,107 +190,17 @@ export class Game {
 
     for (const s of this.slices) {
       if (!s.live) continue;
-      s.vy += 900 * dt;       // gravity (world units/s^2)
-      s.x += s.vx * dt;
-      s.y -= s.vy * dt;       // world Y is up, falling = decreasing globalY
-      s.rot += s.vr * dt;
-      if (this.worldToScreenY(s.y) > this.H + 120) s.live = false;
-    }
-    for (const p of this.particles) {
-      if (!p.live) continue;
-      p.vy -= 600 * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;       // particle world Y up
-      p.life -= dt;
-      if (p.life <= 0) p.live = false;
+      s.vy -= GRAVITY * dt;
+      s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+      s.rx += s.rvx * dt; s.ry += s.rvy * dt; s.rz += s.rvz * dt;
+      if (s.y < this.camTargetY - 30) s.live = false;
     }
   }
 
-  // --- rendering ---
-  _roundRect(ctx, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  _drawBlock(ctx, x, screenY, w, color) {
-    const h = BLOCK_H;
-    // soft long shadow (no outline, per style formula)
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    this._roundRect(ctx, x + 4, screenY + 6, w, h, 6);
-    ctx.fill();
-    // body
-    ctx.fillStyle = color;
-    this._roundRect(ctx, x, screenY, w, h, 6);
-    ctx.fill();
-    // single gentle top-light highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.16)';
-    this._roundRect(ctx, x + 3, screenY + 3, w - 6, h * 0.32, 4);
-    ctx.fill();
-  }
-
-  render(ctx) {
-    const W = this.W, H = this.H;
-    const theme = themeById(this.themeId);
-    const frac = Math.min(1, this.score / 120);
-    const [top, bottom] = theme.sky(frac);
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, top);
-    grad.addColorStop(1, bottom);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
-    // tower — drawn from the top down, culled the moment it leaves the screen below
-    for (let i = this.tower.length - 1; i >= 0; i--) {
-      const b = this.tower[i];
-      const sy = this.worldToScreenY((i + 1) * BLOCK_H);
-      if (sy > H + BLOCK_H) break;        // this and everything below is off-screen
-      if (sy + BLOCK_H < 0) continue;     // above the view, keep scanning down
-      this._drawBlock(ctx, b.x, sy, b.w, theme.block(b.colorIndex));
-    }
-
-    // falling slices
-    for (const s of this.slices) {
-      if (!s.live) continue;
-      const sy = this.worldToScreenY(s.y);
-      ctx.save();
-      ctx.translate(s.x + s.w / 2, sy + s.h / 2);
-      ctx.rotate(s.rot);
-      ctx.fillStyle = s.color;
-      this._roundRect(ctx, -s.w / 2, -s.h / 2, s.w, s.h, 5);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // active block
-    if (this.state === 'playing') {
-      const a = this.active;
-      this._drawBlock(ctx, a.x, this.worldToScreenY(this._activeTopGlobalY()), a.w, theme.block(a.colorIndex));
-    }
-
-    // perfect gold particles
-    for (const p of this.particles) {
-      if (!p.live) continue;
-      const sy = this.worldToScreenY(p.y);
-      ctx.globalAlpha = Math.max(0, p.life / p.max);
-      ctx.fillStyle = GOLD;
-      ctx.beginPath();
-      ctx.arc(p.x, sy, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    // perfect flash
-    if (this.flash > 0) {
-      ctx.fillStyle = `rgba(255,255,255,${this.flash * 0.25})`;
-      ctx.fillRect(0, 0, W, H);
-    }
-  }
+  // Geometry the renderer needs.
+  activeLayer() { return this.tower.length; }
+  RANGE() { return RANGE; }
+  BASE() { return BASE; }
 }
 
-export { BLOCK_H, GOLD };
+export { BLOCK_H, BASE };

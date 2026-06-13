@@ -13,16 +13,15 @@ async function shot(theme, blocks, out) {
   await page.waitForFunction(() => window.__app && window.__app.screen === 'title');
   await page.evaluate(([themeId, n]) => {
     const a = window.__app, g = a.game;
+    window.__store.setTheme(themeId);    // the 3D renderer reads the theme from the store
     a.startRun(false);
-    g.setTheme(themeId);
     for (let i = 0; i < n && g.state === 'playing'; i++) {
-      const p = g.tower.at(-1);
-      g.active.x = p.x + (i % 4 === 3 ? 6 : 0); // mostly perfect, occasional sliver
+      const p = g.tower.at(-1), ax = g.active.axis;     // align on the active sliding axis
+      g.active[ax] = p[ax] + (i % 4 === 3 ? 1.0 : 0);    // mostly perfect, occasional sliver
       g.drop();
     }
-    a.hintT = 0; // no first-timer hint in marketing shots
-    // settle the camera + let particles fade for a clean frame
-    for (let f = 0; f < 80; f++) g.update(1 / 60);
+    a.hintT = 0;                          // no first-timer hint in marketing shots
+    for (let f = 0; f < 80; f++) g.update(1 / 60); // settle camera + let slices fall away
   }, [theme, blocks]);
   await page.waitForTimeout(120);
   await page.screenshot({ path: out, clip: { x: 0, y: 0, width: 540, height: 960 } });

@@ -1,11 +1,12 @@
 // App orchestration: boot, screens, input (touch + mouse + keyboard physical codes + gamepad),
 // fixed-timestep loop, and the wiring of ads / leaderboard / streak / themes. UI is drawn on the
 // canvas with hit-tested buttons so the look stays consistent and there is nothing extra to load.
-import { Game, GOLD } from './game.js';
+import { Game } from './game.js';
+import { Scene3D } from './scene3d.js';
 import { platform } from './platform.js';
 import { store } from './store.js';
 import { audio } from './audio.js';
-import { THEMES, themeById } from './themes.js';
+import { THEMES, themeById, GOLD } from './themes.js';
 import { initLang, t } from './i18n.js';
 import { dailySeed } from './rng.js';
 
@@ -20,8 +21,9 @@ const UI = {
 
 class App {
   constructor() {
-    this.canvas = document.getElementById('c');
+    this.canvas = document.getElementById('ui');   // transparent 2D overlay (UI + input)
     this.ctx = this.canvas.getContext('2d');
+    this.bg = document.getElementById('bg');        // CSS gradient sky behind the 3D
     this.W = innerWidth; this.H = innerHeight;
     this.screen = 'loading';
     this.buttons = [];
@@ -35,6 +37,9 @@ class App {
       onStack: (info) => { this.runCoins += info.coins; },
       onGameOver: (score, isDaily) => this.onGameOver(score, isDaily),
     });
+    // 3D renderer. Degrade gracefully if WebGL is unavailable so the game never crashes (§1.14).
+    try { this.scene = new Scene3D(document.getElementById('gl')); }
+    catch (_) { this.scene = { sync() {}, render() {}, resize() {} }; }
   }
 
   async boot() {
@@ -65,6 +70,7 @@ class App {
     this.canvas.style.width = this.W + 'px'; this.canvas.style.height = this.H + 'px';
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.game.setSize(this.W, this.H);
+    this.scene.resize(this.W, this.H);
   }
 
   S() { return Math.min(this.W, this.H) / 100; } // scale unit
@@ -401,11 +407,24 @@ class App {
     this.button('lback', (W - bw) / 2, H * 0.9, bw, S * 7, t('close'), { action: () => (this.screen = 'title') });
   }
 
+  // UI overlay (transparent canvas above the 3D scene). Also drives the CSS sky backdrop.
   render() {
     const ctx = this.ctx;
     this.buttons = [];
-    // The game (sky + tower) is the backdrop for every screen for a live, calm feel.
-    this.game.render(ctx);
+    ctx.clearRect(0, 0, this.W, this.H);
+
+    // sky backdrop follows tower height + the active theme
+    const frac = Math.min(1, this.game.score / 120);
+    const [a, b] = themeById(store.get().theme).sky(frac);
+    const css = `linear-gradient(180deg, ${a}, ${b})`;
+    if (css !== this._sky) { this._sky = css; this.bg.style.background = css; }
+
+    // perfect-stack flash, over the 3D
+    if (this.game.flash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${this.game.flash * 0.22})`;
+      ctx.fillRect(0, 0, this.W, this.H);
+    }
+
     if (this.screen === 'loading') { this.label(t('loading'), this.W / 2, this.H / 2, this.S() * 3); return; }
     if (this.screen === 'title') this.drawTitle();
     else if (this.screen === 'playing') this.drawHUD();
@@ -427,15 +446,17 @@ class App {
     while (this._acc >= STEP) {
       const dt = STEP / 1000;
       if (this.screen === 'playing') this.game.update(dt);
-      else this.game.update(dt * 0.25); // gentle idle drift of the camera on menus
+      else this.game.update(dt * 0.25); // gentle idle drift of the camera/active block on menus
       if (this.hintT > 0 && this.screen === 'playing') this.hintT -= dt;
       this._acc -= STEP;
     }
+    this.scene.sync(this.game, store.get().theme);
+    this.scene.render();
     this.render();
   }
 }
 
 const app = new App();
 app.boot();
-// Dev-only introspection hook for the automated smoke test (?dev). Harmless in production.
-if (location.search.includes('dev')) window.__app = app;
+// Dev-only introspection hooks for the automated smoke test (?dev). Harmless in production.
+if (location.search.includes('dev')) { window.__app = app; window.__store = store; }
