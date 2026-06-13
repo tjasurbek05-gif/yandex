@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#10131f">
+<title>STACK</title>
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #10131f;
+    -webkit-tap-highlight-color: transparent; }
+  /* one-input game: never let the browser hijack touch/gestures */
+  #c { display: block; touch-action: none; }
+  * { user-select: none; -webkit-user-select: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<!-- Single-build approach: the Yandex SDK is loaded at runtime by ./src/platform.js with a
+     graceful fallback, so this exact page runs on Yandex Games AND as a standalone link. -->
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

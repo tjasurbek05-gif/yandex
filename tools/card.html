@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#10131f}canvas{display:block}</style>
+</head><body><canvas id="c"></canvas><script>
+// Renders the deploy/Yandex card art in the game's own flat-vector-minimalist style (no credits spent).
+const q = new URLSearchParams(location.search);
+const mode = q.get('mode') || 'thumb';
+const W = innerWidth, H = innerHeight;
+const c = document.getElementById('c'); c.width = W; c.height = H;
+const ctx = c.getContext('2d');
+const hsl = (h,s,l)=>`hsl(${h},${s}%,${l}%)`;
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function block(x,y,w,h,color){
+  ctx.fillStyle='rgba(0,0,0,0.20)';rr(x+ h*0.18,y+h*0.26,w,h,h*0.28);ctx.fill();
+  ctx.fillStyle=color;rr(x,y,w,h,h*0.28);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.18)';rr(x+h*0.12,y+h*0.12,w-h*0.24,h*0.34,h*0.18);ctx.fill();
+}
+// sky
+const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#1b2240');g.addColorStop(1,'#2c3c6b');
+ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+
+if(mode==='icon'){
+  // rounded app icon: 4-block mark, centered
+  const s=W; ctx.save();rr(0,0,s,s,s*0.22);ctx.clip();
+  ctx.fillStyle=g;ctx.fillRect(0,0,s,s);
+  const bw=s*0.56, bh=s*0.12, cx=s*0.5;
+  const cols=[hsl(196,58,56),hsl(150,60,56),'#ffd34e',hsl(20,80,62)];
+  const offs=[0,0.06,-0.04,0.10];
+  for(let i=0;i<4;i++){const w=bw*(1-i*0.04);block(cx-w/2+s*offs[i], s*0.30+i*(bh+s*0.03), w, bh, cols[3-i]);}
+  ctx.restore();
+}else{
+  // thumbnail 16:9: title on top, tower below (no overlap)
+  ctx.textAlign='center';ctx.fillStyle='#f5f7fb';
+  ctx.font=`800 ${H*0.17}px system-ui, sans-serif`;ctx.fillText('STACK', W*0.5, H*0.18);
+  ctx.fillStyle='#ffd34e';ctx.font=`700 ${H*0.055}px system-ui, sans-serif`;
+  ctx.fillText('Tap · Stack · Don’t miss', W*0.5, H*0.31);
+  const baseW=W*0.28, cx=W*0.5, bh=H*0.05, gap=H*0.01, step=bh+gap, n=8;
+  const towerTop=H*0.40; // first (top) block top edge
+  for(let i=0;i<n;i++){
+    const w=baseW*(1-i*0.012);
+    const x=cx-w/2 + (i%2? -W*0.01 : W*0.01)*((i%3)?1:0.4);
+    block(x, towerTop+(n-1-i)*step, w, bh, hsl(196+i*9,60,58)); // i=0 bottom .. n-1 top
+  }
+  // active block hovering above the tower + gold spark flash
+  block(cx-baseW/2+W*0.05, towerTop-step, baseW*0.9, bh, hsl(196+n*9,62,60));
+  ctx.fillStyle='#ffd34e';
+  for(let k=0;k<9;k++){ctx.globalAlpha=0.9;ctx.beginPath();
+    ctx.arc(cx+(Math.random()-0.5)*baseW, towerTop-step*0.4+ (Math.random()-0.5)*H*0.12, 3.2, 0, 7);ctx.fill();}
+  ctx.globalAlpha=1;
+}
+document.title='card-ready';
+</script></body></html>

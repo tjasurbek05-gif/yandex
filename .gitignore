@@ -1,0 +1,6 @@
+node_modules/
+*.log
+/tmp/
+tools/shot-*.png
+tools/card-thumb.png
+tools/card-icon.png
