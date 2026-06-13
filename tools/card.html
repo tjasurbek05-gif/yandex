@@ -1,61 +1,94 @@
 <!doctype html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;height:100%;overflow:hidden;background:#10131f}canvas{display:block}</style>
 </head><body><canvas id="c"></canvas><script>
-// Deploy/Yandex card art in the game's ISOMETRIC 3D style (no credits spent). Promo illustration,
-// not a screenshot (§5.6/§8.3.3): no rounded corners, no frame, no UI badges.
+// Bright, glossy isometric-3D card art (promo illustration, not a screenshot — §5.6/§8.3.3:
+// no rounded corners, no frame). Vivid saturated cubes with neon glow + specular highlights.
 const q = new URLSearchParams(location.search);
 const mode = q.get('mode') || 'thumb';
 const W = innerWidth, H = innerHeight;
 const c = document.getElementById('c'); c.width = W; c.height = H;
 const ctx = c.getContext('2d');
-const hsl = (h, s, l) => `hsl(${h}, ${s}%, ${l}%)`;
+const hsl = (h, s, l, a = 1) => `hsla(${h}, ${s}%, ${l}%, ${a})`;
 
-// sky
-const g = ctx.createLinearGradient(0, 0, 0, H);
-g.addColorStop(0, '#1b2240'); g.addColorStop(1, '#2c3c6b');
-ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-
-// One isometric box: (x,y) = screen centre of the TOP face; hw = half-width; bh = side height.
-function isoBlock(x, y, hw, bh, hue) {
-  const hh = hw * 0.5;                       // 2:1 isometric
-  const top = hsl(hue, 62, 60), left = hsl(hue, 60, 46), right = hsl(hue, 58, 36);
-  // left face
-  ctx.fillStyle = left;
-  ctx.beginPath(); ctx.moveTo(x - hw, y); ctx.lineTo(x, y + hh);
-  ctx.lineTo(x, y + hh + bh); ctx.lineTo(x - hw, y + bh); ctx.closePath(); ctx.fill();
-  // right face
-  ctx.fillStyle = right;
-  ctx.beginPath(); ctx.moveTo(x + hw, y); ctx.lineTo(x, y + hh);
-  ctx.lineTo(x, y + hh + bh); ctx.lineTo(x + hw, y + bh); ctx.closePath(); ctx.fill();
-  // top face
-  ctx.fillStyle = top;
-  ctx.beginPath(); ctx.moveTo(x, y - hh); ctx.lineTo(x + hw, y);
-  ctx.lineTo(x, y + hh); ctx.lineTo(x - hw, y); ctx.closePath(); ctx.fill();
+// vivid radiant background
+function background() {
+  const g = ctx.createLinearGradient(0, 0, W * 0.2, H);
+  g.addColorStop(0, '#3b1e8f'); g.addColorStop(0.5, '#7b2ff7'); g.addColorStop(1, '#16c7ff');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // soft radial glow behind the subject
+  const r = ctx.createRadialGradient(W * 0.5, H * 0.55, 0, W * 0.5, H * 0.55, Math.max(W, H) * 0.6);
+  r.addColorStop(0, 'rgba(255,255,255,0.22)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = r; ctx.fillRect(0, 0, W, H);
+}
+function sparkles(n, cx, cy, spread) {
+  for (let k = 0; k < n; k++) {
+    const a = Math.random() * 6.28, d = Math.random() * spread;
+    const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d * 0.6, s = 1.5 + Math.random() * 3;
+    ctx.globalAlpha = 0.5 + Math.random() * 0.5; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
-if (mode === 'icon') {
-  // 512 square, full-bleed, 4 stacked boxes centred
-  const cx = W * 0.5, hw = W * 0.32, bh = W * 0.12;
-  const hues = [196, 150, 45, 18];           // cyan, green, gold-ish, coral
-  let y = H * 0.62;
-  for (let i = 0; i < 4; i++) { isoBlock(cx, y, hw, bh, hues[i]); y -= bh; }
-} else {
-  // 16:9 cover: title on top, an iso tower below + a sliding active block (kept clear of the text)
-  ctx.textAlign = 'center'; ctx.fillStyle = '#f5f7fb';
-  ctx.font = `800 ${H * 0.16}px system-ui, sans-serif`; ctx.fillText('STACK', W * 0.5, H * 0.16);
-  ctx.fillStyle = '#ffd34e'; ctx.font = `700 ${H * 0.05}px system-ui, sans-serif`;
-  ctx.fillText('Tap · Stack · Don’t miss', W * 0.5, H * 0.27);
+// One glossy isometric box with a neon glow, gradient faces and a specular streak.
+function isoBlock(x, y, hw, bh, hue) {
+  const hh = hw * 0.5;
+  ctx.save();
+  ctx.shadowColor = hsl(hue, 100, 60, 0.9); ctx.shadowBlur = hw * 0.55;
+  // left face
+  let lg = ctx.createLinearGradient(x - hw, y, x, y + hh + bh);
+  lg.addColorStop(0, hsl(hue, 88, 52)); lg.addColorStop(1, hsl(hue, 85, 38));
+  ctx.fillStyle = lg;
+  ctx.beginPath(); ctx.moveTo(x - hw, y); ctx.lineTo(x, y + hh);
+  ctx.lineTo(x, y + hh + bh); ctx.lineTo(x - hw, y + bh); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+  // right face (darker)
+  let rg = ctx.createLinearGradient(x + hw, y, x, y + hh + bh);
+  rg.addColorStop(0, hsl(hue, 82, 42)); rg.addColorStop(1, hsl(hue, 80, 30));
+  ctx.fillStyle = rg;
+  ctx.beginPath(); ctx.moveTo(x + hw, y); ctx.lineTo(x, y + hh);
+  ctx.lineTo(x, y + hh + bh); ctx.lineTo(x + hw, y + bh); ctx.closePath(); ctx.fill();
+  // top face (brightest, glossy gradient)
+  let tg = ctx.createLinearGradient(x, y - hh, x, y + hh);
+  tg.addColorStop(0, hsl(hue, 95, 78)); tg.addColorStop(1, hsl(hue, 90, 58));
+  ctx.fillStyle = tg;
+  ctx.beginPath(); ctx.moveTo(x, y - hh); ctx.lineTo(x + hw, y);
+  ctx.lineTo(x, y + hh); ctx.lineTo(x - hw, y); ctx.closePath(); ctx.fill();
+  // specular highlight on the top face
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath(); ctx.moveTo(x, y - hh * 0.92); ctx.lineTo(x + hw * 0.5, y - hh * 0.05);
+  ctx.lineTo(x, y + hh * 0.2); ctx.lineTo(x - hw * 0.5, y - hh * 0.05); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
 
-  const cx = W * 0.5, hw = W * 0.15, bh = H * 0.072, n = 6;
-  let y = H * 0.9, topY = y;
-  for (let i = 0; i < n; i++) { isoBlock(cx, y, hw, bh, 196 + i * 10); topY = y; y -= bh; }
-  // active block sliding in from the side, just above the top block (below the text)
-  isoBlock(cx + hw * 1.7, topY - bh * 0.3, hw, bh, 196 + n * 10);
-  // a couple of gold sparks near the join
-  ctx.fillStyle = '#ffd34e';
-  for (let k = 0; k < 8; k++) {
-    ctx.beginPath(); ctx.arc(cx + (Math.random() - 0.5) * hw * 2, topY + Math.random() * H * 0.12, 3.4, 0, 7); ctx.fill();
-  }
+background();
+const HUES = [190, 150, 95, 50, 18, 320, 270]; // cyan, green, lime, gold, orange, pink, purple
+
+if (mode === 'icon') {
+  sparkles(18, W * 0.5, H * 0.45, W * 0.42);
+  const cx = W * 0.5, hw = W * 0.33, bh = W * 0.13;
+  let y = H * 0.66;
+  for (let i = 0; i < 4; i++) { isoBlock(cx, y, hw, bh, HUES[i]); y -= bh; }
+} else {
+  // 16:9 cover
+  const cx = W * 0.5, hw = W * 0.135, bh = H * 0.07, n = 6;
+  sparkles(26, cx, H * 0.62, W * 0.4);
+  let y = H * 0.92, topY = y;
+  for (let i = 0; i < n; i++) { isoBlock(cx, y, hw, bh, HUES[i]); topY = y; y -= bh; }
+  isoBlock(cx + hw * 1.7, topY - bh * 0.3, hw, bh, HUES[n]); // sliding active block
+
+  // bold glowing title with a dark stroke for contrast on the bright background
+  ctx.textAlign = 'center';
+  ctx.font = `900 ${H * 0.19}px system-ui, sans-serif`;
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,90,210,0.9)'; ctx.shadowBlur = H * 0.06;
+  ctx.lineWidth = H * 0.018; ctx.strokeStyle = '#2a1060'; ctx.strokeText('STACK', cx, H * 0.2);
+  ctx.fillStyle = '#ffffff'; ctx.fillText('STACK', cx, H * 0.2);
+  ctx.restore();
+  ctx.font = `800 ${H * 0.055}px system-ui, sans-serif`;
+  ctx.lineWidth = H * 0.012; ctx.strokeStyle = '#2a1060';
+  ctx.strokeText('Tap · Stack · Don’t miss', cx, H * 0.33);
+  ctx.fillStyle = '#ffe23f'; ctx.fillText('Tap · Stack · Don’t miss', cx, H * 0.33);
 }
 document.title = 'card-ready';
 </script></body></html>
