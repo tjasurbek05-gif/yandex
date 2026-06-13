@@ -34,6 +34,8 @@ class Platform {
     this._lastInterstitial = 0;
     this._onAdOpen = () => {};
     this._onAdClose = () => {};
+    this._onSysPause = () => {};
+    this._onSysResume = () => {};
   }
 
   // Register pause/mute hooks so every ad correctly suspends gameplay + audio.
@@ -41,6 +43,10 @@ class Platform {
     this._onAdOpen = onOpen || (() => {});
     this._onAdClose = onClose || (() => {});
   }
+
+  // Register handlers for SDK-initiated pause/resume (game_api_pause / game_api_resume).
+  onSystemPause(cb) { this._onSysPause = cb || (() => {}); }
+  onSystemResume(cb) { this._onSysResume = cb || (() => {}); }
 
   async init() {
     for (const url of SDK_URLS) {
@@ -58,6 +64,11 @@ class Platform {
         // Player (cloud save). scopes:false = no permission prompt; guest data still works per device.
         try { this.player = await this.ysdk.getPlayer({ scopes: false }); } catch (_) {}
         try { this.lb = await this.ysdk.getLeaderboards(); } catch (_) {}
+        // SDK pause/resume events (e.g. the platform backgrounds the game) — §1.19.4.
+        try {
+          this.ysdk.on?.('game_api_pause', () => this._onSysPause());
+          this.ysdk.on?.('game_api_resume', () => this._onSysResume());
+        } catch (_) {}
       } catch (_) {
         this.ysdk = null;
         this.hasYandex = false;

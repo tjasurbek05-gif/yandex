@@ -32,7 +32,14 @@ export class Game {
     this.reset(1, false);
   }
 
-  setSize(w, h) { this.W = w; this.H = h; }
+  setSize(w, h) {
+    this.W = w; this.H = h;
+    // Keep the interactive block fully visible + reachable after a resize / orientation change.
+    if (this.active) {
+      this.active.w = Math.min(this.active.w, w);
+      this.active.x = Math.max(0, Math.min(w - this.active.w, this.active.x));
+    }
+  }
   setTheme(id) { this.themeId = id; }
 
   baseW() { return Math.min(BASE_W_MAX, this.W * BASE_W_FRAC); }

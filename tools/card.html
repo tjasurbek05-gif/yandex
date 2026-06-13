@@ -20,14 +20,12 @@ const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#1b2240');g.addColor
 ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
 
 if(mode==='icon'){
-  // rounded app icon: 4-block mark, centered
-  const s=W; ctx.save();rr(0,0,s,s,s*0.22);ctx.clip();
-  ctx.fillStyle=g;ctx.fillRect(0,0,s,s);
-  const bw=s*0.56, bh=s*0.12, cx=s*0.5;
+  // SQUARE icon, full-bleed, NO rounded corners / frame (Yandex §8.3.3). 4-block mark, centered.
+  const s=W;
+  const bw=s*0.58, bh=s*0.125, cx=s*0.5;
   const cols=[hsl(196,58,56),hsl(150,60,56),'#ffd34e',hsl(20,80,62)];
   const offs=[0,0.06,-0.04,0.10];
-  for(let i=0;i<4;i++){const w=bw*(1-i*0.04);block(cx-w/2+s*offs[i], s*0.30+i*(bh+s*0.03), w, bh, cols[3-i]);}
-  ctx.restore();
+  for(let i=0;i<4;i++){const w=bw*(1-i*0.04);block(cx-w/2+s*offs[i], s*0.28+i*(bh+s*0.035), w, bh, cols[3-i]);}
 }else{
   // thumbnail 16:9: title on top, tower below (no overlap)
   ctx.textAlign='center';ctx.fillStyle='#f5f7fb';

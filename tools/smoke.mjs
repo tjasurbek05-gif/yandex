@@ -26,6 +26,14 @@ log.push('title screen reached: ' + (await screen()));
 await press();
 log.push('after first Space -> ' + (await screen()));
 
+// A single pointer tap must drop exactly once (no pointer+touch double-fire).
+const before = await score();
+await page.mouse.click(195, 500); // center-ish, clear of HUD buttons
+await page.waitForTimeout(80);
+const after = await score();
+log.push(`single tap drop delta = ${after - before} (expect 1)`);
+if (after - before !== 1) { console.log('FAIL: tap double-fired'); process.exitCode = 1; }
+
 // Drop ~40 times; the moving block will eventually miss and end the run.
 let ended = false;
 for (let i = 0; i < 60; i++) {

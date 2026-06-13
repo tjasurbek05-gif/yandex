@@ -35,6 +35,13 @@ class Store {
     this._saveTimer = setTimeout(() => platform.saveData(this.data), 250);
   }
 
+  // Immediate persist (localStorage write is synchronous) — used on page hide so a refresh right
+  // after an action never loses progress (§1.9).
+  flush() {
+    clearTimeout(this._saveTimer);
+    platform.saveData(this.data);
+  }
+
   get() { return this.data; }
 
   addCoins(n) { this.data.coins += n; this.save(); }

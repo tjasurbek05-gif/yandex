@@ -47,6 +47,9 @@ class App {
       () => { this.adActive = true; audio.suspend(); platform.gameplayStop(); },
       () => { this.adActive = false; audio.resume(); },
     );
+    // SDK-initiated pause/resume (§1.19.4) — route to the same hide/show as blur/visibility.
+    platform.onSystemPause(() => this.handleHide());
+    platform.onSystemResume(() => this.handleShow());
     this.resize();
     this.bindInput();
     platform.ready();           // tell Yandex the game is interactive
@@ -71,19 +74,21 @@ class App {
     addEventListener('resize', () => this.resize());
     addEventListener('orientationchange', () => this.resize());
 
-    const tap = (x, y) => this.onTap(x, y);
-    this.canvas.addEventListener('pointerdown', (e) => {
-      if (this.adActive) return;
-      audio.unlock();
-      tap(e.clientX, e.clientY);
-    });
-    // touchstart fallback for older mobile browsers; prevent scroll/zoom.
-    this.canvas.addEventListener('touchstart', (e) => {
-      if (this.adActive) return;
-      e.preventDefault(); audio.unlock();
-      const tch = e.changedTouches[0];
-      tap(tch.clientX, tch.clientY);
-    }, { passive: false });
+    const tap = (x, y) => { if (this.adActive) return; audio.unlock(); this.onTap(x, y); };
+    // Use Pointer Events when available (covers mouse + touch + pen with ONE event, so a single
+    // tap never double-fires). Fall back to touch + mouse for old Safari/iOS that lack them.
+    if (window.PointerEvent) {
+      this.canvas.addEventListener('pointerdown', (e) => tap(e.clientX, e.clientY));
+    } else {
+      this.canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault(); const t = e.changedTouches[0]; tap(t.clientX, t.clientY);
+      }, { passive: false });
+      this.canvas.addEventListener('mousedown', (e) => tap(e.clientX, e.clientY));
+    }
+    // No scroll, no long-press selection, no context menu inside the game field (§1.6.1.8/1.6.2.7).
+    this.canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    addEventListener('contextmenu', (e) => e.preventDefault());
+    addEventListener('selectstart', (e) => e.preventDefault());
 
     addEventListener('keydown', (e) => {
       if (this.adActive) return;
@@ -91,13 +96,16 @@ class App {
       else if (e.code === 'Escape') { this.onEscape(); }
     });
 
-    addEventListener('blur', () => {
-      if (this.screen === 'playing') { this.screen = 'paused'; platform.gameplayStop(); }
-      audio.suspend();
-    });
-    addEventListener('focus', () => { if (!this.adActive) audio.resume(); });
+    // Stop sound + pause on minimize/tab-switch (§1.3); flush save on exit (§1.9).
+    addEventListener('blur', () => this.handleHide());
+    addEventListener('focus', () => this.handleShow());
+    document.addEventListener('visibilitychange', () => (document.hidden ? this.handleHide() : this.handleShow()));
+    addEventListener('pagehide', () => { store.flush(); audio.suspend(); });
     this._prevPad = false;
   }
+
+  handleHide() { if (this.screen === 'playing') this.pauseGame(); else audio.suspend(); }
+  handleShow() { if (!this.adActive) audio.resume(); }
 
   pollGamepad() {
     let action = false;
@@ -260,21 +268,23 @@ class App {
   drawHUD() {
     const { W, H } = this; const S = this.S();
     this.label(String(this.game.score), W / 2, H * 0.12, S * 11, UI.text, 'center', 800);
-    if (this.game.perfectCombo > 1) {
+    const playing = this.screen === 'playing'; // transient overlays only on the live scene
+    if (playing && this.game.perfectCombo > 1) {
       this.label(`${t('combo')} x${this.game.perfectCombo}`, W / 2, H * 0.12 + S * 7, S * 2.6, GOLD);
     }
     this.label(`★ ${store.get().coins + this.runCoins}`, S * 3, S * 5, S * 2.6, UI.dim, 'left');
     // pause button top-right
     const pr = S * 6;
     this.button('pause', W - pr - S * 2, S * 2, pr, pr, '⏸', { action: () => this.pauseGame() });
-    if (this.game.perfectTextT > 0) {
+    if (playing && this.game.perfectTextT > 0) {
       this.ctx.globalAlpha = Math.min(1, this.game.perfectTextT * 2);
       this.label(t('perfect'), W / 2, H * 0.3, S * 4.5, GOLD, 'center', 800);
       this.ctx.globalAlpha = 1;
     }
-    if (this.hintT > 0) {
+    if (playing && this.hintT > 0) {
+      // In the clear sky between the score and the active block, so it never overlaps the tower.
       this.ctx.globalAlpha = Math.min(1, this.hintT);
-      this.label(t('tap_hint'), W / 2, H * 0.72, S * 2.6, UI.text);
+      this.label(t('tap_hint'), W / 2, H * 0.26, S * 2.6, UI.dim);
       this.ctx.globalAlpha = 1;
     }
   }

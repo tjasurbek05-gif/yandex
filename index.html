@@ -7,11 +7,14 @@
 <title>STACK</title>
 <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #10131f;
+  html, body { margin: 0; height: 100%; background: #10131f;
+    overflow: hidden; overscroll-behavior: none; /* kill pull-to-refresh / scroll chaining */
     -webkit-tap-highlight-color: transparent; }
+  /* lock the page so there is no browser scroll or swipe-to-refresh (§1.10.2) */
+  body { position: fixed; inset: 0; touch-action: none; }
   /* one-input game: never let the browser hijack touch/gestures */
   #c { display: block; touch-action: none; }
-  * { user-select: none; -webkit-user-select: none; }
+  * { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 </style>
 </head>
 <body>
