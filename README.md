@@ -106,7 +106,7 @@ tools/            headless tests + card-image renderer (NOT shipped in the game 
 | §1.3 sound stops on minimize | `blur` + `visibilitychange` suspend audio |
 | §1.5 / §4 ads only via SDK; §4.7 pause+mute on ad | all ads go through the SDK; ad hooks pause game + mute |
 | §4.5 rewarded is opt-in, clearly labelled, bonus-only | Revive / Double-coins buttons say "Watch ad → …"; Restart is always free |
-| §4.4 ads only at logical pauses | interstitial only **between** runs, self-throttled ≥60s, never on first load |
+| §4.4 ads only at logical pauses | **skippable interstitial on every loss** (game-over), self-throttled to Yandex's ≥60s, never on first load; **Revive = unskippable rewarded video** (opt-in) |
 | §1.6.1.5 gesture control; §1.6.2.4 mouse/keyboard | one action: tap / click / Space / gamepad |
 | §1.6.1.8 / §1.6.2.7 no selection / context menu | `contextmenu` + `selectstart` prevented; `user-select:none` |
 | §1.10.2 no browser scroll / pull-to-refresh | `overscroll-behavior:none`, `position:fixed`, `touch-action:none` |

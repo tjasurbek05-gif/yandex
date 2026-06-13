@@ -180,6 +180,11 @@ class App {
     this.lastNewBest = store.recordScore(score, isDaily) || this.lastNewBest;
     platform.submitScore(LB_BOARD, score);
     this.screen = 'gameover';
+    // Every loss shows a SKIPPABLE fullscreen (interstitial) ad — after a short beat so the player
+    // sees the result first. Yandex enforces a >=60s gap (platform.showInterstitial self-throttles),
+    // and the guard skips it if the player already left the game-over screen (e.g. tapped Revive).
+    // Revive itself uses the UNSKIPPABLE rewarded video (watchRewarded), not this.
+    setTimeout(() => { if (this.screen === 'gameover') platform.showInterstitial(); }, 700);
   }
 
   // Commit this run's coins exactly once, when the run truly ends (leaving the game-over screen).
@@ -197,7 +202,9 @@ class App {
 
   async leaveGameOver(isDaily) {
     this.commitRunCoins();
-    await platform.showInterstitial(); // throttled; never on first load
+    // Fallback loss-ad for a very fast restart (before the on-death interstitial fired). The >=60s
+    // self-throttle means this never double-shows with the on-death ad in the same loss cycle.
+    await platform.showInterstitial();
     if (isDaily !== null) this.startRun(isDaily); else { this.screen = 'title'; this.lbEntries = null; }
   }
 
@@ -459,4 +466,4 @@ class App {
 const app = new App();
 app.boot();
 // Dev-only introspection hooks for the automated smoke test (?dev). Harmless in production.
-if (location.search.includes('dev')) { window.__app = app; window.__store = store; }
+if (location.search.includes('dev')) { window.__app = app; window.__store = store; window.__platform = platform; }

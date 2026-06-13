@@ -81,6 +81,21 @@ await page.waitForTimeout(140);
 await page.screenshot({ path: 'tools/shot-play.png' });
 log.push('mid-play screen: ' + (await screen()) + ', tower height ' + towerH + ', webgl ' + hasGL);
 
+// On every loss a SKIPPABLE interstitial must be requested; Revive uses the rewarded (unskippable)
+// video, not the interstitial. Spy on both and force a clean game-over.
+const ads = await page.evaluate(async () => {
+  const p = window.__platform, a = window.__app, g = a.game;
+  let inter = 0, rewarded = 0;
+  const oi = p.showInterstitial.bind(p); p.showInterstitial = async () => { inter++; return oi(); };
+  const orw = p.showRewarded.bind(p); p.showRewarded = async () => { rewarded++; return orw(); };
+  a.startRun(false);
+  const ax = g.active.axis; g.active[ax] = g.tower.at(-1)[ax] + 100; g.drop(); // total miss -> game over
+  await new Promise((r) => setTimeout(r, 950)); // wait past the 700ms on-death timer
+  return { inter, rewarded, screen: a.screen };
+});
+log.push(`on-loss interstitial=${ads.inter} rewarded=${ads.rewarded} screen=${ads.screen} (expect inter>=1, rewarded 0)`);
+if (ads.inter < 1 || ads.rewarded !== 0) { console.log('FAIL: loss-ad behavior wrong'); process.exitCode = 1; }
+
 await browser.close();
 
 console.log(log.join('\n'));
