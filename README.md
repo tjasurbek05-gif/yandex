@@ -1,5 +1,8 @@
 # STACK — a one-tap arcade tower-stacker
 
+**▶ Play the live preview:** https://ancient-snow-367.higgsfield.gg/
+(the same build, intended home is **Yandex Games** — upload `dist/stack.zip`, see below)
+
 A tiny, instant-loading HTML5 browser game built for **Yandex Games**. Tap (anywhere) / click /
 `Space` / gamepad to drop each sliding block onto the tower; the overhang is sliced off, a flush drop
 is a **PERFECT** (gold flash + ascending chime + bonus). Miss and the run ends.
